@@ -1,0 +1,6 @@
+
+/app_bind_data
+/backups
+/initdb.d
+
+*.log

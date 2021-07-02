@@ -1,0 +1,43 @@
+version: '3'
+
+services:
+    app:
+        build: .
+        environment:
+            DB_DATABASE: ${MYSQL_DATABASE}
+            DB_USER: ${MYSQL_USER}
+            DB_PASSWORD: ${MYSQL_PASSWORD}
+            DB_TYPE: 'mysql'
+            # DB_DATABASE: ${POSTGRES_DB}
+            # DB_USER: ${POSTGRES_USER}
+            # DB_PASSWORD: ${POSTGRES_PASSWORD}
+            # DB_TYPE: 'pgsql'
+        volumes:
+            # - ./src:/app
+            - app_volume_data:/app_volume
+            - ./app_bind_data:/app_bind
+
+    db:
+        image: mariadb
+        environment:
+            MYSQL_DATABASE: ${MYSQL_DATABASE}
+            MYSQL_USER: ${MYSQL_USER}
+            MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+            MYSQL_RANDOM_ROOT_PASSWORD: 'yes'
+        volumes:
+            - db_data:/var/lib/mysql
+            - ./initdb.d:/docker-entrypoint-initdb.d
+
+    # db:
+    #     image: postgres:alpine
+    #     environment:
+    #         POSTGRES_DB: ${POSTGRES_DB}
+    #         POSTGRES_USER: ${POSTGRES_USER}
+    #         POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    #     volumes:
+    #         - db_data:/var/lib/postgresql/data
+    #         - ./initdb.d:/docker-entrypoint-initdb.d
+
+volumes:
+    app_volume_data:
+    db_data:
