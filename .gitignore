@@ -1,6 +1,7 @@
 
 /app_bind_data
 /backups
+/docker_volumes
 /initdb.d
 
 *.log
