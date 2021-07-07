@@ -2,29 +2,31 @@
 
 function get_db_config(): array
 {
-    $envs = \getenv();
+    $requiredEnvs = [
+        'DB_DATABASE' => 'db',
+        'DB_USER' => 'user',
+        'DB_PASSWORD' => 'password',
+        'DB_TYPE' => 'driver',
+    ];
+    $result = [];
 
-    $dbDatabase = $envs['DB_DATABASE'] ?? null;
-    $dbUser = $envs['DB_USER'] ?? null;
-    $dbPassword = $envs['DB_PASSWORD'] ?? null;
-    $dbType = $envs['DB_TYPE'] ?? null;
+    foreach ($requiredEnvs as $requiredEnv => $key) {
+        $result[$key] = \getenv($requiredEnv);
 
-    if (!$dbDatabase || !$dbUser || !$dbPassword || !$dbType) {
-        log_message('DB config is missing...');
-        log_message('Env DB_DATABASE, DB_USER. DB_PASSWORD, DB_TYPE are required');
+        if ($result[$key] === false) {
+            log_message('DB config is missing...');
+            log_message(
+                'Envs ' . \implode(', ', $requiredEnvs) . ' are required'
+            );
 
-        exit(1);
+            exit(1);
+        }
     }
 
-    return [
-        'db' => $dbDatabase,
-        'user' => $dbUser,
-        'password' => $dbPassword,
-        'driver' => $dbType,
-    ];
+    return $result;
 }
 
-function create_pdo(array $dbConfig): ?\PDO
+function create_pdo(array $dbConfig): \PDO
 {
     $attemptsLeft = 15;
 
@@ -52,8 +54,7 @@ function run_migration($pdo, $migration): void
         $pdo->query('SELECT * FROM local_files');
     } catch (\PDOException $ex) {
         log_message('Run migration');
-        $migration = \file_get_contents($migration);
-        $pdo->query($migration);
+        $pdo->query(\file_get_contents($migration));
     }
 }
 

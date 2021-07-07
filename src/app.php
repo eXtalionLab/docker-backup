@@ -7,14 +7,9 @@ log_message('App start!');
 $dbConfig = get_db_config();
 $pdo = create_pdo($dbConfig);
 run_migration($pdo, __DIR__ . "/migration.{$dbConfig['driver']}.sql");
-
 $dbFiles = $pdo->query('SELECT * FROM local_files')->fetchAll();
 
-if (!$dbFiles) {
-    log_message('No files in database');
-} else {
-    log_message('Files in database:');
-}
+log_message($dbFiles ? 'Files in database:' : 'No files in database');
 
 foreach ($dbFiles as $file) {
     log_message("- {$file['name']} ({$file['created_at']}),");
@@ -33,7 +28,6 @@ $appStop = false;
     }
 );
 
-$localFiles = [];
 $directory = new \DirectoryIterator('/app_bind');
 
 while (!$appStop) {
