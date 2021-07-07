@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+# See https://github.com/eXtalionLab/docker-backup
+
 script=$0
 
 ###> config ###
