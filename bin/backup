@@ -88,6 +88,10 @@ function clean {
     if [[ ${#volumesToBackup[@]} -gt 0 && "$backupType" != "db" ]]; then
         removeVolumesFilesFromLocalDir
     fi
+
+    if [[ ! -s "$backupLogFile" ]]; then
+        rm "$backupLogFile"
+    fi
 }
 
 function createDir {
