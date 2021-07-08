@@ -212,10 +212,13 @@ function moveVolumesFilesToLocalDir {
 
 function removeVolumesFilesFromLocalDir {
     info "Remove volumes files from \"$dockerVolumesDir\""
-    docker run --rm \
-        -v "$(realpath "$dockerVolumesDir")":/local_dir \
-        "$dockerImgToBackupVolumes" \
-        rm -rf /local_dir/ 2> /dev/null
+
+    for v in "${volumesToBackup[@]}"; do
+        docker run --rm \
+            -v "$(realpath "$dockerVolumesDir")":/local_dir \
+            "$dockerImgToBackupVolumes" \
+            rm -rf "/local_dir/$v"  >> "$backupLogFile" 2>&1
+    done
 }
 
 function mapExcludeFilesToTarOption {
