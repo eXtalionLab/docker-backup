@@ -85,7 +85,7 @@ function createDir {
             error "Fail. See $logFile"
         )
 
-        if [[ -f "$logFile" ]]; then
+        if [[ ! -s "$logFile" ]]; then
             rm "$logFile"
         fi
     fi
