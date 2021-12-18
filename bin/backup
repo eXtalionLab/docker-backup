@@ -116,7 +116,7 @@ function clean {
 
     if [[ -f "$localDockerFileName" ]]; then
         info "Remove sql dump \"$localDockerFileName\""
-        rm "$localDockerFileName" >> "$backupLogFile" 2>&1 || ( \
+        rm -f "$localDockerFileName" >> "$backupLogFile" 2>&1 || ( \
             warning "Fail. See $logFile"
         )
     fi
@@ -126,7 +126,7 @@ function clean {
     fi
 
     if [[ ! -s "$backupLogFile" ]]; then
-        rm "$backupLogFile"
+        rm -f "$backupLogFile"
     fi
 }
 
@@ -143,7 +143,7 @@ function createDir {
         )
 
         if [[ ! -s "$logFile" ]]; then
-            rm "$logFile"
+            rm -f "$logFile"
         fi
     fi
 }
