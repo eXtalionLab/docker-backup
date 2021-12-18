@@ -4,9 +4,11 @@ set -e
 # See https://github.com/eXtalionLab/docker-backup
 
 script=$0
+script_path=$(realpath "$script")
+root_path=$(pwd)
 
-###> config ###
-backupDir="backups"
+###> default config ###
+backupDir="${root_path}/backups"
 backupFile=$(date +%Y%m%d_%H%M%S)
 backupLogFile="$backupDir/$backupFile.log"
 # See help()
@@ -23,31 +25,53 @@ envFile=".env"
 # (16MB). If we try to dump a row which is larger than this limit, the
 # dump will fail.
 mysqlMaxAllowedPacket="1G"
-###< config ###
+###< default config ###
 
 ###> files/volumes to backup ###
-filesToBackup=( \
-    "$envFile" \
-    "app_bind_data/" \
-)
-filesToExclude=( \
-    "$dockerVolumesDir/docker-backup_app_volume_data/*.log" \
-)
+filesToBackup=()
+filesToExclude=()
 # Remember to prefix volumes with docker-compose project name
-volumesToBackup=( \
-    "docker-backup_app_volume_data" \
-)
+volumesToBackup=()
 ###< files/volumes to backup ###
 
 function help {
     echo "Run: $script type"
     echo ""
     echo "Available types:"
-    echo "    all   Backup db and files"
-    echo "    db    Backup db only"
-    echo "    files Backup files only"
+    echo "    all     Backup db and files"
+    echo "    db      Backup db only"
+    echo "    files   Backup files only"
+    echo ""
+    echo "Other commands:"
+    echo "    install Create new file .docker-backup"
 
     exit
+}
+
+function install {
+    { \
+        echo "# See https://github.com/eXtalionLab/docker-backup"; \
+        echo ""; \
+        echo "###> config ###"; \
+        echo "backupDir=\"backups\""; \
+        echo "dockerDbServiceName=\"db\""; \
+        echo "# Use local image to skip download"; \
+        echo "dockerImgToBackupVolumes=\"alpine\""; \
+        echo "dockerVolumesDir=\"docker_volumes\""; \
+        echo "# Allow types: custom, mysql, postgresql"; \
+        echo "dbType=\"mysql\""; \
+        echo "envFile=\".env\""; \
+        echo "###< config ###"; \
+        echo ""; \
+        echo "###> files/volumes to backup ###"; \
+        echo "filesToBackup=( \\"; \
+        echo "    \"\$envFile\" \\"; \
+        echo ")"; \
+        echo "filesToExclude=()"; \
+        echo "# Remember to prefix volumes with docker-compose project name"; \
+        echo "volumesToBackup=()"; \
+        echo "###< files/volumes to backup ###"; \
+    } > "${root_path}/.docker-backup.dist"
 }
 
 function log {
@@ -68,6 +92,18 @@ function warning {
 }
 
 function init {
+    local configFile="${root_path}/.docker-backup"
+
+    if [[ -f "${configFile}.dist" ]]; then
+        info "Load ${configFile}.dist"
+        source "${configFile}.dist"
+    fi
+
+    if [[ -f "${configFile}" ]]; then
+        info "Load ${configFile}"
+        source "${configFile}"
+    fi
+
     info "Start backup"
     createDir "$backupDir"
     decreasePriority
@@ -298,6 +334,8 @@ elif [[ "$backupType" == "files" ]]; then
     init
     backupFiles
     clean
+elif [[ "$backupType" == "install" ]]; then
+    install
 else
     help
 fi

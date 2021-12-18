@@ -4,4 +4,5 @@
 /docker_volumes
 /initdb.d
 
+.docker-backup
 *.log
