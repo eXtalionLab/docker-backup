@@ -223,7 +223,7 @@ function backupPostgresDb {
 }
 
 function doBackupFile {
-    local fileName="$backupDir/$backupFile.tar.gz"
+    local fileName="$backupDir/$backupFile.tar"
     local -n curentFilesToBackup=$1
 
     if [[ $# -eq 2 ]]; then
@@ -233,11 +233,12 @@ function doBackupFile {
     fi
 
     (
-        tar -czf "$fileName" \
+        tar -cf "$fileName" \
             --ignore-failed-read \
             ${curentFilesToExclude[*]} \
             ${curentFilesToBackup[*]} >> "$backupLogFile" 2>&1 \
-        && info "Backup file \"$fileName\"" \
+        && pigz "$fileName" \
+        && info "Backup file \"$fileName.gz\"" \
     ) || warning "Fail. See \"$backupLogFile\""
 }
 
