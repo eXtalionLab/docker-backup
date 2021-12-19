@@ -4,11 +4,11 @@ set -e
 # See https://github.com/eXtalionLab/docker-backup
 
 script=$0
-script_path=$(realpath "$script")
+script_path="$(dirname "$(realpath "$script")")/.."
 root_path=$(pwd)
 
 ###> default config ###
-backupDir="${root_path}/backups"
+backupDir="backups"
 backupFile=$(date +%Y%m%d_%H%M%S)
 backupLogFile="$backupDir/$backupFile.log"
 # See help()
@@ -49,29 +49,18 @@ function help {
 }
 
 function install {
-    { \
-        echo "# See https://github.com/eXtalionLab/docker-backup"; \
-        echo ""; \
-        echo "###> config ###"; \
-        echo "backupDir=\"backups\""; \
-        echo "dockerDbServiceName=\"db\""; \
-        echo "# Use local image to skip download"; \
-        echo "dockerImgToBackupVolumes=\"alpine\""; \
-        echo "dockerVolumesDir=\"docker_volumes\""; \
-        echo "# Allow types: custom, mysql, postgresql"; \
-        echo "dbType=\"mysql\""; \
-        echo "envFile=\".env\""; \
-        echo "###< config ###"; \
-        echo ""; \
-        echo "###> files/volumes to backup ###"; \
-        echo "filesToBackup=( \\"; \
-        echo "    \"\$envFile\" \\"; \
-        echo ")"; \
-        echo "filesToExclude=()"; \
-        echo "# Remember to prefix volumes with docker-compose project name"; \
-        echo "volumesToBackup=()"; \
-        echo "###< files/volumes to backup ###"; \
-    } > "${root_path}/.docker-backup.dist"
+    local configFile="${root_path}/.docker-backup.dist"
+    local override='y'
+
+    if [[ -f "${configFile}" ]]; then
+        read -rn 1 \
+            -p "Config file \"${configFile}\" exists, override? [y/n] " \
+            override
+    fi
+
+    if [[ "$override" == 'y' ]]; then
+        cp "${script_path}/.docker-backup.template" "$configFile"
+    fi
 }
 
 function log {
