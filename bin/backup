@@ -50,17 +50,37 @@ function help {
 
 function install {
     local configFile="${root_path}/.docker-backup.dist"
-    local override='y'
+
+    info "Install \".docker-backup.dist\""
+
+    if [[ -d "${configFile}" ]]; then
+        error "\"${configFile}\" is a directory"
+    fi
 
     if [[ -f "${configFile}" ]]; then
-        read -rn 1 \
-            -p "Config file \"${configFile}\" exists, override? [y/n] " \
-            override
+        info "Config file \"${configFile}\" exists, override? [y/n]"
+
+        read -rn 1 -p "-> " override
+        echo ""
+
+        if [[ "$override" != 'y' ]]; then
+            return
+        fi
+
+        if [[ ! -w "${configFile}" ]]; then
+            error "Can't override file \"${configFile}\""
+        fi
+
+        cp "${script_path}/.docker-backup.template" "$configFile"
+
+        return
     fi
 
-    if [[ "$override" == 'y' ]]; then
-        cp "${script_path}/.docker-backup.template" "$configFile"
+    if [[ ! -w "${root_path}" ]]; then
+        error "Can't create a file in \"${root_path}\""
     fi
+
+    cp "${script_path}/.docker-backup.template" "$configFile"
 }
 
 function log {
