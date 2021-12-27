@@ -10,6 +10,8 @@ root_path=$(pwd)
 ###> default config ###
 backupDir="backups"
 backupFile=$(date +%Y%m%d_%H%M%S)
+# How much old bakcups keep
+backupFilesToKeep=1
 backupLogFile="$backupDir/$backupFile.log"
 # See help()
 backupType=$1
@@ -122,6 +124,10 @@ function init {
     decreasePriority
 }
 
+function findBackupFiles {
+    find "$backupDir" -type f -name "*.tar.gz"
+}
+
 function clean {
     info "Clean after backup"
 
@@ -140,6 +146,22 @@ function clean {
 
     if [[ ! -s "$backupLogFile" ]]; then
         rm -f "$backupLogFile"
+    fi
+
+    local allBackups
+    allBackups=$(findBackupFiles | wc -l)
+
+    if [[ $backupFilesToKeep -lt 0 ]]; then
+        backupFilesToKeep=0
+    fi
+
+    if [[ $allBackups -gt $backupFilesToKeep ]]; then
+        info "Remove $allBackups backup(s) ($backupFilesToKeep to keep)"
+
+        findBackupFiles \
+            | sort -h \
+            | head -n "$((allBackups - backupFilesToKeep))" \
+            | xargs rm -f
     fi
 }
 
