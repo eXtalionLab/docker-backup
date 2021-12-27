@@ -13,6 +13,7 @@ backupFile=$(date +%Y%m%d_%H%M%S)
 backupLogFile="$backupDir/$backupFile.log"
 # See help()
 backupType=$1
+configFileName=".docker-backup"
 dockerDbInitdbDir="initdb.d"
 dockerDbServiceName="db"
 # Use local image to skip download
@@ -43,15 +44,15 @@ function help {
     echo "    files   Backup files only"
     echo ""
     echo "Other commands:"
-    echo "    install Create new file .docker-backup"
+    echo "    install Create new file ${configFileName}.dist"
 
     exit
 }
 
 function install {
-    local configFile="${root_path}/.docker-backup.dist"
+    local configFile="${root_path}/${configFileName}.dist"
 
-    info "Install \".docker-backup.dist\""
+    info "Install \"${configFileName}.dist\""
 
     if [[ -d "${configFile}" ]]; then
         error "\"${configFile}\" is a directory"
@@ -71,7 +72,7 @@ function install {
             error "Can't override file \"${configFile}\""
         fi
 
-        cp "${script_path}/.docker-backup.template" "$configFile"
+        cp "${script_path}/${configFileName}.template" "$configFile"
 
         return
     fi
@@ -80,7 +81,7 @@ function install {
         error "Can't create a file in \"${root_path}\""
     fi
 
-    cp "${script_path}/.docker-backup.template" "$configFile"
+    cp "${script_path}/${configFileName}.template" "$configFile"
 }
 
 function log {
@@ -100,20 +101,23 @@ function warning {
     log "warning" "$1"
 }
 
+function loadFile {
+    file="${1}"
+
+    if [[ -f "${file}" ]]; then
+        info "Load ${file}"
+        source "${file}"
+    fi
+}
+
 function init {
-    local configFile="${root_path}/.docker-backup"
+    local configFile="${root_path}/${configFileName}"
 
-    if [[ -f "${configFile}.dist" ]]; then
-        info "Load ${configFile}.dist"
-        source "${configFile}.dist"
-    fi
-
-    if [[ -f "${configFile}" ]]; then
-        info "Load ${configFile}"
-        source "${configFile}"
-    fi
+    loadFile "${configFile}.dist"
+    loadFile "${configFile}"
 
     info "Start backup"
+
     createDir "$backupDir"
     decreasePriority
 }
