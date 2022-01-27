@@ -46,7 +46,8 @@ function help {
     echo "    files   Backup files only"
     echo ""
     echo "Other commands:"
-    echo "    install Create new file ${configFileName}.dist"
+    echo "    install         Create new file ${configFileName}.dist"
+    echo "    restore_volumes Restore volumes files"
 
     exit
 }
@@ -322,6 +323,23 @@ function moveVolumesFilesToLocalDir {
     || warning "Fail. See \"$backupLogFile\""
 }
 
+function restoreVolumesFilesFromLocalDir {
+    info "Restore volumes files from \"$dockerVolumesDir\""
+
+    local volumesBind=()
+
+    for v in "${volumesToBackup[@]}"; do
+        volumesBind+=("-v $v:/volumes/$v")
+    done
+
+    docker run --rm \
+        ${volumesBind[*]} \
+        -v "$(realpath "$dockerVolumesDir")":/local_dir \
+        "$dockerImgToBackupVolumes" \
+        cp -aR /local_dir/. /volumes/. >> "$backupLogFile" 2>&1 \
+    || warning "Fail. See \"$backupLogFile\""
+}
+
 function removeVolumesFilesFromLocalDir {
     info "Remove volumes files from \"$dockerVolumesDir\""
 
@@ -373,6 +391,9 @@ elif [[ "$backupType" == "files" ]]; then
     clean
 elif [[ "$backupType" == "install" ]]; then
     install
+elif [[ "$backupType" == "restore_volumes" ]]; then
+    init
+    restoreVolumesFilesFromLocalDir
 else
     help
 fi
