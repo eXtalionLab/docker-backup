@@ -3,31 +3,31 @@ set -e
 
 # See https://github.com/eXtalionLab/docker-backup
 
-script=$0
-script_path="$(dirname "$(realpath "$script")")/.."
-root_path=$(pwd)
+script="${0}"
+script_path="$(dirname "$(realpath "${script}")")/.."
+root_path="$(pwd)"
 
 ###> default config ###
-backupDir="backups"
-backupFile=$(date +%Y%m%d_%H%M%S)
+backupDir='backups'
+backupFile="$(date +%Y%m%d_%H%M%S)"
 # How much old bakcups keep
 backupFilesToKeep=1
-backupLogFile="$backupDir/$backupFile.log"
+backupLogFile="${backupDir}/${backupFile}.log"
 # See help()
-backupType=$1
-configFileName=".docker-backup"
-dockerDbInitdbDir="initdb.d"
-dockerDbServiceName="db"
+backupType="${1}"
+configFileName='.docker-backup'
+dockerDbInitdbDir='initdb.d'
+dockerDbServiceName='db'
 # Use local image to skip download
-dockerImgToBackupVolumes="alpine"
-dockerVolumesDir="docker_volumes"
+dockerImgToBackupVolumes='alpine'
+dockerVolumesDir='docker_volumes'
 # Allow types: custom, mysql, postgresql
-dbType="mysql"
-envFile=".env"
 # MySQL's default "max_allowed_packet" setting is fairly conservative
+dbType='mysql'
+envFile='.env'
 # (16MB). If we try to dump a row which is larger than this limit, the
 # dump will fail.
-mysqlMaxAllowedPacket="1G"
+mysqlMaxAllowedPacket='1G'
 ###< default config ###
 
 ###> files/volumes to backup ###
@@ -38,7 +38,7 @@ volumesToBackup=()
 ###< files/volumes to backup ###
 
 function help {
-    echo "Run: $script type"
+    echo "Run: ${script} type"
     echo ""
     echo "Available types:"
     echo "    all     Backup db and files"
@@ -67,7 +67,7 @@ function install {
         read -rn 1 -p "-> " override
         echo ""
 
-        if [[ "$override" != 'y' ]]; then
+        if [[ "${override}" != 'y' ]]; then
             return
         fi
 
@@ -75,7 +75,7 @@ function install {
             error "Can't override file \"${configFile}\""
         fi
 
-        cp "${script_path}/${configFileName}.template" "$configFile"
+        cp "${script_path}/${configFileName}.template" "${configFile}"
 
         return
     fi
@@ -84,24 +84,24 @@ function install {
         error "Can't create a file in \"${root_path}\""
     fi
 
-    cp "${script_path}/${configFileName}.template" "$configFile"
+    cp "${script_path}/${configFileName}.template" "${configFile}"
 }
 
 function log {
-    echo "[$(date +"%Y-%m-%d %H:%M:%S")] $1 - $2"
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ${1} - ${2}"
 }
 
 function error {
-    log "error" "$1"
+    log 'error' "${1}"
     exit 1
 }
 
 function info {
-    log "info" "$1"
+    log 'info' "${1}"
 }
 
 function warning {
-    log "warning" "$1"
+    log 'warning' "${1}"
 }
 
 function loadFile {
@@ -119,45 +119,45 @@ function init {
     loadFile "${configFile}.dist"
     loadFile "${configFile}"
 
-    info "Start backup"
+    info 'Start backup'
 
-    createDir "$backupDir"
+    createDir "${backupDir}"
     decreasePriority
 }
 
 function findBackupFiles {
-    find "$backupDir" -type f -name "*.tar.gz"
+    find "${backupDir}" -type f -name "*.tar.gz"
 }
 
 function clean {
-    info "Clean after backup"
+    info 'Clean after backup'
 
-    local localDockerFileName="$dockerDbInitdbDir/dump.sql"
+    local localDockerFileName="${dockerDbInitdbDir}/dump.sql"
 
-    if [[ -f "$localDockerFileName" ]]; then
-        info "Remove sql dump \"$localDockerFileName\""
-        rm -f "$localDockerFileName" >> "$backupLogFile" 2>&1 || ( \
-            warning "Fail. See $logFile"
+    if [[ -f "${localDockerFileName}" ]]; then
+        info "Remove sql dump \"${localDockerFileName}\""
+        rm -f "${localDockerFileName}" >> "${backupLogFile}" 2>&1 || ( \
+            warning "Fail. See ${logFile}"
         )
     fi
 
-    if [[ ${#volumesToBackup[@]} -gt 0 && "$backupType" != "db" ]]; then
+    if [[ ${#volumesToBackup[@]} -gt 0 && "${backupType}" != 'db' ]]; then
         removeVolumesFilesFromLocalDir
     fi
 
-    if [[ ! -s "$backupLogFile" ]]; then
-        rm -f "$backupLogFile"
+    if [[ ! -s "${backupLogFile}" ]]; then
+        rm -f "${backupLogFile}"
     fi
 
     local allBackups
     allBackups=$(findBackupFiles | wc -l)
 
-    if [[ $backupFilesToKeep -lt 0 ]]; then
+    if [[ ${backupFilesToKeep} -lt 0 ]]; then
         backupFilesToKeep=0
     fi
 
-    if [[ $allBackups -gt $backupFilesToKeep ]]; then
-        info "Remove $allBackups backup(s) ($backupFilesToKeep to keep)"
+    if [[ ${allBackups} -gt ${backupFilesToKeep} ]]; then
+        info "Remove ${allBackups} backup(s) (${backupFilesToKeep} to keep)"
 
         findBackupFiles \
             | sort -h \
@@ -167,58 +167,58 @@ function clean {
 }
 
 function createDir {
-    local dir="$1"
+    local dir="${1}"
     local logFile
-    logFile="$(basename "$backupLogFile")"
+    logFile="$(basename "${backupLogFile}")"
 
-    if [[ ! -d "$dir" ]]; then
-        info "Create \"$dir\" directory"
+    if [[ ! -d "${dir}" ]]; then
+        info "Create \"${dir}\" directory"
 
-        mkdir -p "$dir" >> "$logFile" 2>&1 || ( \
-            error "Fail. See $logFile"
+        mkdir -p "${dir}" >> "${logFile}" 2>&1 || ( \
+            error "Fail. See ${logFile}"
         )
 
-        if [[ ! -s "$logFile" ]]; then
-            rm -f "$logFile"
+        if [[ ! -s "${logFile}" ]]; then
+            rm -f "${logFile}"
         fi
     fi
 }
 
 function decreasePriority {
-    info "Decrease CPU priority"
+    info 'Decrease CPU priority'
 
     # Decrease the CPU priority of this process so it doesn't contend with
     # other more important things.
 
-    renice -n 19 $$ >> /dev/null 2> "$backupLogFile"
+    renice -n 19 $$ >> /dev/null 2> "${backupLogFile}"
 }
 
 function getEnv {
-    local env=$1
+    local env="${1}"
 
-    grep "^$env=" "$envFile" | awk -F= '{print $2}'
+    grep "^${env}=" "${envFile}" | awk -F= '{print $2}'
 }
 
 function backupCustomDb {
-    local dockerFileName="$1"
-    local localDockerFileName="$2"
+    local dockerFileName="${1}"
+    local localDockerFileName="${2}"
 
-    # Output file has to be saved to $localDockerFileName
+    # Output file has to be saved to ${localDockerFileName}
 
     # Your docker service which will make a dump should has a volumes map like:
-    # - $(dirname $(realpath $localDockerFileName)):$(dirname $(realpath $dockerFileName))
+    # - $(dirname $(realpath ${localDockerFileName})):$(dirname $(realpath ${dockerFileName}))
 
     # Example:
     #
     # your_command_to_dump \
-    #     --output $localDockerFileName >> "$backupLogFile" 2>&1
+    #     --output ${localDockerFileName} >> "${backupLogFile}" 2>&1
     #
     # or
     #
     # docker-compose exec docker_service \
-    #     your_command_to_dump --output $dockerFileName >> "$backupLogFile" 2>&1
+    #     your_command_to_dump --output ${dockerFileName} >> "${backupLogFile}" 2>&1
 
-    warning "Skip. Not implemented"
+    warning 'Skip. Not implemented'
 }
 
 function backupMysqlDb {
@@ -226,172 +226,172 @@ function backupMysqlDb {
     local dbPassword
     local dbUser
 
-    dbName=$(getEnv "MYSQL_DATABASE")
-    dbPassword=$(getEnv "MYSQL_PASSWORD")
-    dbUser=$(getEnv "MYSQL_USER")
+    dbName="$(getEnv 'MYSQL_DATABASE')"
+    dbPassword="$(getEnv 'MYSQL_PASSWORD')"
+    dbUser="$(getEnv 'MYSQL_USER')"
 
     ( \
-        docker-compose exec -T "$dockerDbServiceName" mysqldump \
+        docker-compose exec -T "${dockerDbServiceName}" mysqldump \
             --hex-blob \
             --single-transaction \
-            --max-allowed-packet "$mysqlMaxAllowedPacket" \
-            -r "$1" \
-            -u "$dbUser" \
-            -p"$dbPassword" \
-            "$dbName" >> "$backupLogFile" 2>&1 \
-    ) || warning "Fail. See \"$backupLogFile\""
+            --max-allowed-packet "${mysqlMaxAllowedPacket}" \
+            -r "${1}" \
+            -u "${dbUser}" \
+            -p"${dbPassword}" \
+            "${dbName}" >> "${backupLogFile}" 2>&1 \
+    ) || warning "Fail. See \"${backupLogFile}\""
 }
 
 function backupPostgresDb {
     local dbName
     local dbUser
 
-    dbName=$(getEnv "POSTGRES_DB")
-    dbUser=$(getEnv "POSTGRES_USER")
+    dbName="$(getEnv 'POSTGRES_DB')"
+    dbUser="$(getEnv 'POSTGRES_USER')"
 
     ( \
-        docker-compose exec -T "$dockerDbServiceName" pg_dump \
+        docker-compose exec -T "${dockerDbServiceName}" pg_dump \
             -b \
-            -f "$1" \
-            -U "$dbUser" \
-            "$dbName" >> "$backupLogFile" 2>&1 \
-    ) || warning "Fail. See \"$backupLogFile\""
+            -f "${1}" \
+            -U "${dbUser}" \
+            "${dbName}" >> "${backupLogFile}" 2>&1 \
+    ) || warning "Fail. See \"${backupLogFile}\""
 }
 
 function doBackupFile {
-    local fileName="$backupDir/$backupFile.tar"
-    local -n curentFilesToBackup=$1
+    local fileName="${backupDir}/${backupFile}.tar"
+    local -n curentFilesToBackup=${1}
 
     if [[ $# -eq 2 ]]; then
-        local -n curentFilesToExclude=$2
+        local -n curentFilesToExclude=${2}
     else
         local curentFilesToExclude=()
     fi
 
     (
-        tar -cf "$fileName" \
+        tar -cf "${fileName}" \
             --ignore-failed-read \
             ${curentFilesToExclude[*]} \
-            ${curentFilesToBackup[*]} >> "$backupLogFile" 2>&1 \
-        && pigz "$fileName" \
-        && info "Backup file \"$fileName.gz\"" \
-    ) || warning "Fail. See \"$backupLogFile\""
+            ${curentFilesToBackup[*]} >> "${backupLogFile}" 2>&1 \
+        && pigz "${fileName}" \
+        && info "Backup file \"${fileName}.gz\"" \
+    ) || warning "Fail. See \"${backupLogFile}\""
 }
 
 function backupDb {
-    info "Backup db"
+    info 'Backup db'
 
     local dockerFileName="/docker-entrypoint-initdb.d/dump.sql"
-    local localDockerFileName="$dockerDbInitdbDir/dump.sql"
+    local localDockerFileName="${dockerDbInitdbDir}/dump.sql"
 
-    if [[ "$dbType" == "custom" ]]; then
-        backupCustomDb "$dockerFileName" "$localDockerFileName"
-    elif [[ "$dbType" == "mysql" ]]; then
-        backupMysqlDb "$dockerFileName"
-    elif [[ "$dbType" == "postgresql" ]]; then
-        backupPostgresDb "$dockerFileName"
+    if [[ "${dbType}" == 'custom' ]]; then
+        backupCustomDb "${dockerFileName}" "${localDockerFileName}"
+    elif [[ "${dbType}" == 'mysql' ]]; then
+        backupMysqlDb "${dockerFileName}"
+    elif [[ "${dbType}" == 'postgresql' ]]; then
+        backupPostgresDb "${dockerFileName}"
     else
-        warning "Skip. Unknown db type \"$dbType\""
+        warning "Skip. Unknown db type \"${dbType}\""
 
         return
     fi
 
-    if [[ -f "$localDockerFileName" ]]; then
-        if [[ "$backupType" == "db" ]]; then
-            local tmpArray=("$localDockerFileName")
+    if [[ -f "${localDockerFileName}" ]]; then
+        if [[ "${backupType}" == 'db' ]]; then
+            local tmpArray=("${localDockerFileName}")
             doBackupFile tmpArray
         else
-            filesToBackup+=("$localDockerFileName")
+            filesToBackup+=("${localDockerFileName}")
         fi
     fi
 }
 
 function moveVolumesFilesToLocalDir {
-    info "Move volumes files to \"$dockerVolumesDir\""
+    info "Move volumes files to \"${dockerVolumesDir}\""
 
     local volumesBind=()
 
     for v in "${volumesToBackup[@]}"; do
-        volumesBind+=("-v $v:/volumes/$v")
+        volumesBind+=("-v ${v}:/volumes/${v}")
     done
 
     docker run --rm \
         ${volumesBind[*]} \
-        -v "$(realpath "$dockerVolumesDir")":/local_dir \
-        "$dockerImgToBackupVolumes" \
-        cp -aR /volumes/. /local_dir/. >> "$backupLogFile" 2>&1 \
-    || warning "Fail. See \"$backupLogFile\""
+        -v "$(realpath "${dockerVolumesDir}")":/local_dir \
+        "${dockerImgToBackupVolumes}" \
+        cp -aR /volumes/. /local_dir/. >> "${backupLogFile}" 2>&1 \
+    || warning "Fail. See \"${backupLogFile}\""
 }
 
 function restoreVolumesFilesFromLocalDir {
-    info "Restore volumes files from \"$dockerVolumesDir\""
+    info "Restore volumes files from \"${dockerVolumesDir}\""
 
     local volumesBind=()
 
     for v in "${volumesToBackup[@]}"; do
-        volumesBind+=("-v $v:/volumes/$v")
+        volumesBind+=("-v ${v}:/volumes/${v}")
     done
 
     docker run --rm \
         ${volumesBind[*]} \
-        -v "$(realpath "$dockerVolumesDir")":/local_dir \
-        "$dockerImgToBackupVolumes" \
-        cp -aR /local_dir/. /volumes/. >> "$backupLogFile" 2>&1 \
-    || warning "Fail. See \"$backupLogFile\""
+        -v "$(realpath "${dockerVolumesDir}")":/local_dir \
+        "${dockerImgToBackupVolumes}" \
+        cp -aR /local_dir/. /volumes/. >> "${backupLogFile}" 2>&1 \
+    || warning "Fail. See \"${backupLogFile}\""
 }
 
 function removeVolumesFilesFromLocalDir {
-    info "Remove volumes files from \"$dockerVolumesDir\""
+    info "Remove volumes files from \"${dockerVolumesDir}\""
 
     for v in "${volumesToBackup[@]}"; do
         docker run --rm \
-            -v "$(realpath "$dockerVolumesDir")":/local_dir \
-            "$dockerImgToBackupVolumes" \
-            rm -rf "/local_dir/$v"  >> "$backupLogFile" 2>&1
+            -v "$(realpath "${dockerVolumesDir}")":/local_dir \
+            "${dockerImgToBackupVolumes}" \
+            rm -rf "/local_dir/${v}"  >> "${backupLogFile}" 2>&1
     done
 }
 
 function mapExcludeFilesToTarOption {
     for i in "${!filesToExclude[@]}"; do
-        filesToExclude[$i]="--exclude=${filesToExclude[$i]}"
+        filesToExclude[${i}]="--exclude=${filesToExclude[${i}]}"
     done
 }
 
 function backupFiles {
-    info "Backup files"
+    info 'Backup files'
 
     if [[ ${#filesToBackup[@]} -eq 0 && ${#volumesToBackup[@]} -eq 0 ]]; then
-        info "Skip. No files/volumes to backup"
+        info 'Skip. No files/volumes to backup'
 
         return
     fi
 
     if [[ ${#volumesToBackup[@]} -gt 0 ]]; then
-        createDir "$dockerVolumesDir"
+        createDir "${dockerVolumesDir}"
         moveVolumesFilesToLocalDir
-        filesToBackup+=("$dockerVolumesDir")
+        filesToBackup+=("${dockerVolumesDir}")
     fi
 
     mapExcludeFilesToTarOption
     doBackupFile filesToBackup filesToExclude
 }
 
-if [[ "$backupType" == "all" ]]; then
+if [[ "${backupType}" == 'all' ]]; then
     init
     backupDb
     backupFiles
     clean
-elif [[ "$backupType" == "db" ]]; then
+elif [[ "${backupType}" == 'db' ]]; then
     init
     backupDb
     clean
-elif [[ "$backupType" == "files" ]]; then
+elif [[ "${backupType}" == 'files' ]]; then
     init
     backupFiles
     clean
-elif [[ "$backupType" == "install" ]]; then
+elif [[ "${backupType}" == 'install' ]]; then
     install
-elif [[ "$backupType" == "restore_volumes" ]]; then
+elif [[ "${backupType}" == 'restore_volumes' ]]; then
     init
     restoreVolumesFilesFromLocalDir
 else
