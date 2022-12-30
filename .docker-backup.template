@@ -19,3 +19,8 @@ filesToExclude=()
 # Remember to prefix volumes with docker-compose project name
 volumesToBackup=()
 ###< files/volumes to backup ###
+
+###> borg ###
+export BORG_REPO='backups/app'
+export BORG_PASSPHRASE='Change_me!'
+###< borg ###

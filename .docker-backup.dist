@@ -24,3 +24,8 @@ volumesToBackup=( \
     'docker-backup_app_volume_data' \
 )
 ###< files/volumes to backup ###
+
+###> borg ###
+export BORG_REPO='backups/app'
+export BORG_PASSPHRASE='Change_me!'
+###< borg ###
