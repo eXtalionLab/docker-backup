@@ -146,7 +146,7 @@ function initBorg {
     borg init \
         -e repokey-blake2 \
         --make-parent-dirs >> "${backupLogFile}" 2>&1 \
-    || error "Fail. See ${backupLogFile}"
+    || warning "Fail. See ${backupLogFile}"
 }
 
 function clean {
