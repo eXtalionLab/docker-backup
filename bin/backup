@@ -338,7 +338,6 @@ function backupFiles {
         --list \
         --filter AME \
         --stats \
-        --noacls \
         --compression zstd,5 \
         ${filesToExclude[*]} \
         --exclude-caches \
