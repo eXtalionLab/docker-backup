@@ -350,7 +350,7 @@ function backupFiles {
 
 function mapExcludeFilesToCommandOption {
     for i in "${!filesToExclude[@]}"; do
-        filesToExclude[${i}]="--exclude ${filesToExclude[${i}]}"
+        filesToExclude[${i}]="--exclude=${filesToExclude[${i}]}"
     done
 }
 
