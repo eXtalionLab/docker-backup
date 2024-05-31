@@ -13,7 +13,7 @@ dockerDbServiceName='db'
 # Use local image to skip download
 dockerImgToBackupVolumes='alpine'
 dockerVolumesDir='docker_volumes'
-# Allow types: custom, mysql, postgresql
+# Allow types: custom, mariadb, mysql, postgresql
 # MySQL's default "max_allowed_packet" setting is fairly conservative
 dbType='mysql'
 envFile='.env'
@@ -217,6 +217,8 @@ function dumpDb {
     if [[ "${dbType}" == 'custom' ]]; then
         info 'Dump custom db'
         dumpCustomDb
+    elif [[ "${dbType}" == 'mariadb' ]]; then
+        dumpMariaDb
     elif [[ "${dbType}" == 'mysql' ]]; then
         dumpMysqlDb
     elif [[ "${dbType}" == 'postgresql' ]]; then
@@ -251,6 +253,28 @@ function dumpCustomDb {
     #     your_command_to_dump --output ${dockerDbDumpFile} >> "${backupLogFile}" 2>&1
 
     warning 'Skip. Not implemented'
+}
+
+function dumpMariaDb {
+    info 'Dump maria db'
+
+    local dbName
+    local dbPassword
+    local dbUser
+
+    dbName="$(getEnv 'MYSQL_DATABASE')"
+    dbPassword="$(getEnv 'MYSQL_PASSWORD')"
+    dbUser="$(getEnv 'MYSQL_USER')"
+
+    docker-compose exec -T "${dockerDbServiceName}" mariadb-dump \
+        --hex-blob \
+        --single-transaction \
+        --max-allowed-packet "${mysqlMaxAllowedPacket}" \
+        -r "${dockerDbDumpFile}" \
+        -u "${dbUser}" \
+        -p"${dbPassword}" \
+        "${dbName}" >> "${backupLogFile}" 2>&1 \
+    || warning "Fail. See \"${backupLogFile}\""
 }
 
 function dumpMysqlDb {

@@ -1,5 +1,3 @@
-version: '3'
-
 services:
     app:
         build: .
@@ -20,13 +18,24 @@ services:
     db:
         image: mariadb
         environment:
-            MYSQL_DATABASE: ${MYSQL_DATABASE}
-            MYSQL_USER: ${MYSQL_USER}
-            MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-            MYSQL_RANDOM_ROOT_PASSWORD: 'yes'
+            MARIADB_DATABASE: ${MYSQL_DATABASE}
+            MARIADB_USER: ${MYSQL_USER}
+            MARIADB_PASSWORD: ${MYSQL_PASSWORD}
+            MARIADB_RANDOM_ROOT_PASSWORD: 'yes'
         volumes:
             - db_data:/var/lib/mysql
             - ./initdb.d:/docker-entrypoint-initdb.d
+
+    # db:
+    #     image: mysql
+    #     environment:
+    #         MYSQL_DATABASE: ${MYSQL_DATABASE}
+    #         MYSQL_USER: ${MYSQL_USER}
+    #         MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    #         MYSQL_RANDOM_ROOT_PASSWORD: 'yes'
+    #     volumes:
+    #         - db_data:/var/lib/mysql
+    #         - ./initdb.d:/docker-entrypoint-initdb.d
 
     # db:
     #     image: postgres:alpine

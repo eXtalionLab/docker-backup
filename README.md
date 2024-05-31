@@ -53,7 +53,7 @@ dockerDbServiceName='db'
 # Use local image to skip download
 dockerImgToBackupVolumes='alpine'
 dockerVolumesDir='docker_volumes'
-# Allow types: custom, mysql, postgresql
+# Allow types: custom, mariadb, mysql, postgresql
 dbType='mysql'
 envFile='.env'
 ###< config ###
@@ -79,8 +79,8 @@ export BORG_PASSPHRASE='Change_me!'
 | dockerDbServiceName | `string` | `db` | It's a name of your `docker-compose` database service. |
 | dockerImgToBackupVolumes | `string` | `alpine` | You can put here your image name just to skip download new one. |
 | dockerVolumesDir | `string` | `docker_volumes` | Where to temporary store a files from `docker` volumes. |
-| dbType | `string` | `mysql` | What kind of database are you using? Allow types are: `custom`, `mysql`, `postgresql`. |
-| envFile | `string` | `.env` | File from where we will read data to connect to database. For `mysql` we require `MYSQL_DATABASE`, `MYSQL_PASSWORD`, `MYSQL_USER`. For `postgresql` we require `POSTGRES_DB`, `POSTGRES_USER`.
+| dbType | `string` | `mysql` | What kind of database are you using? Allow types are: `custom`, `mariadb`, `mysql`, `postgresql`. |
+| envFile | `string` | `.env` | File from where we will read data to connect to database. For `mariadb`/`mysql` we require `MYSQL_DATABASE`, `MYSQL_PASSWORD`, `MYSQL_USER`. For `postgresql` we require `POSTGRES_DB`, `POSTGRES_USER`.
 | filesToBackup | `array` | `[ ${envFile} ]` | Files/directories to backup.
 | filesToExclue | `array` | `[]` | Files/directories to exclude from backup. Eg. `var`, `cache`, `*.log`. |
 | volumesToBackup | `array` | `[]` | Volumes to backup. Remember to prefix them with project name |
