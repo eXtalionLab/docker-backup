@@ -1,0 +1,24 @@
+{
+    "name": "extalion/docker-backup",
+    "description": "Example app to show how to use docker-backup tool",
+    "type": "project",
+    "require": {
+        "ext-mongodb": "^1.19",
+        "ext-pdo_mysql": "*",
+        "ext-pdo_pgsql": "*",
+        "mongodb/mongodb": "^1.19",
+        "psr/log": "^3.0"
+    },
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Extalion\\DockerBackup\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Damian Glinkowski",
+            "email": "damian@extalion.com"
+        }
+    ]
+}

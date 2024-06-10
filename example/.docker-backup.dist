@@ -6,7 +6,7 @@ dockerDbServiceName='db'
 # Use local image to skip download
 dockerImgToBackupVolumes='alpine'
 dockerVolumesDir='docker_volumes'
-# Allow types: custom, mariadb, mysql, postgresql
+# Allow types: custom, mariadb, mongo, mysql, postgresql
 dbType='mariadb'
 envFile='.env'
 ###< config ###
@@ -17,11 +17,11 @@ filesToBackup=( \
     'app_bind_data/' \
 )
 filesToExclude=( \
-    "${dockerVolumesDir}/docker-backup_app_volume_data/*.log" \
+    "${dockerVolumesDir}/example_app_volume_data/*.log" \
 )
 # Remember to prefix volumes with docker-compose project name
 volumesToBackup=( \
-    'docker-backup_app_volume_data' \
+    'example_app_volume_data' \
 )
 ###< files/volumes to backup ###
 

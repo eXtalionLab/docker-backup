@@ -13,7 +13,7 @@ dockerDbServiceName='db'
 # Use local image to skip download
 dockerImgToBackupVolumes='alpine'
 dockerVolumesDir='docker_volumes'
-# Allow types: custom, mariadb, mysql, postgresql
+# Allow types: custom, mariadb, mongo, mysql, postgresql
 # MySQL's default "max_allowed_packet" setting is fairly conservative
 dbType='mysql'
 envFile='.env'
@@ -51,6 +51,7 @@ function help {
     echo "Commands:"
     echo "    run             Backup db and files"
     echo "    install         Create new file ${configFileName}.dist"
+    echo "    restore_mongodb Restore mongo db"
     echo "    restore_volumes Restore volumes files"
 
     exit
@@ -166,13 +167,13 @@ function clean {
 }
 
 function cleanDbDump {
-    if [[ ! -f "${localDockerDbDumpFile}" ]]; then
+    if [[ ! -e "${localDockerDbDumpFile}" ]] || [[ "${localDockerDbDumpFile}" == "/" ]]; then
         return
     fi
 
     info "Remove sql dump \"${localDockerDbDumpFile}\""
 
-    rm -f "${localDockerDbDumpFile}" >> "${backupLogFile}" 2>&1 \
+    rm -rf "${localDockerDbDumpFile}" >> "${backupLogFile}" 2>&1 \
     || warning "Fail. See ${backupLogFile}"
 }
 
@@ -219,6 +220,8 @@ function dumpDb {
         dumpCustomDb
     elif [[ "${dbType}" == 'mariadb' ]]; then
         dumpMariaDb
+    elif [[ "${dbType}" == 'mongo' ]]; then
+        dumpMongoDb
     elif [[ "${dbType}" == 'mysql' ]]; then
         dumpMysqlDb
     elif [[ "${dbType}" == 'postgresql' ]]; then
@@ -231,7 +234,7 @@ function dumpDb {
 
     decreaseLogIndent
 
-    if [[ -f "${localDockerDbDumpFile}" ]]; then
+    if [[ -e "${localDockerDbDumpFile}" ]]; then
         filesToBackup+=("${localDockerDbDumpFile}")
     fi
 }
@@ -274,6 +277,26 @@ function dumpMariaDb {
         -u "${dbUser}" \
         -p"${dbPassword}" \
         "${dbName}" >> "${backupLogFile}" 2>&1 \
+    || warning "Fail. See \"${backupLogFile}\""
+}
+
+function dumpMongoDb {
+    info 'Dump mongo db'
+
+    local dbName
+    local dbPassword
+    local dbUser
+
+    dbName="$(getEnv 'MONGO_DATABASE')"
+    dbPassword="$(getEnv 'MONGO_PASSWORD')"
+    dbUser="$(getEnv 'MONGO_USER')"
+
+    docker-compose exec -T "${dockerDbServiceName}" mongodump \
+        -d "${dbName}" \
+        -u "${dbUser}" \
+        -p "${dbPassword}" \
+        --authenticationDatabase=admin \
+        -o "${dockerDbDumpFile}" >> "${backupLogFile}" 2>&1 \
     || warning "Fail. See \"${backupLogFile}\""
 }
 
@@ -419,6 +442,25 @@ function install {
     decreaseLogIndent
 }
 
+function restoreMongoDb {
+    info 'Restore mongo db'
+
+    local dbName
+    local dbPassword
+    local dbUser
+
+    dbName="$(getEnv 'MONGO_DATABASE')"
+    dbPassword="$(getEnv 'MONGO_PASSWORD')"
+    dbUser="$(getEnv 'MONGO_USER')"
+
+    docker-compose exec -T "${dockerDbServiceName}" mongorestore \
+        -u "${dbUser}" \
+        -p "${dbPassword}" \
+        --authenticationDatabase=admin \
+        "${dockerDbDumpFile}" >> "${backupLogFile}" 2>&1 \
+    || warning "Fail. See \"${backupLogFile}\""
+}
+
 function restoreVolumesFilesFromLocalDir {
     info "Restore volumes files from \"${dockerVolumesDir}\""
 
@@ -444,6 +486,9 @@ if [[ "${commandToRun}" == 'run' ]]; then
     clean
 elif [[ "${commandToRun}" == 'install' ]]; then
     install
+elif [[ "${commandToRun}" == 'restore_mongodb' ]]; then
+    init
+    restoreMongoDb
 elif [[ "${commandToRun}" == 'restore_volumes' ]]; then
     init
     restoreVolumesFilesFromLocalDir

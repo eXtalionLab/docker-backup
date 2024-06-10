@@ -2,18 +2,29 @@ services:
     app:
         build: .
         environment:
+            # For mariadb & mysql db
             DB_DATABASE: ${MYSQL_DATABASE}
             DB_USER: ${MYSQL_USER}
             DB_PASSWORD: ${MYSQL_PASSWORD}
-            DB_TYPE: 'mysql'
-            # DB_DATABASE: ${POSTGRES_DB}
-            # DB_USER: ${POSTGRES_USER}
-            # DB_PASSWORD: ${POSTGRES_PASSWORD}
-            # DB_TYPE: 'pgsql'
+            DB_DRIVER: 'mysql'
+            # For mongo db
+            #DB_DATABASE: ${MONGO_DATABASE}
+            #DB_USER: ${MONGO_USER}
+            #DB_PASSWORD: ${MONGO_PASSWORD}
+            #DB_DRIVER: 'mongodb'
+            # For postgres db
+            #DB_DATABASE: ${POSTGRES_DB}
+            #DB_USER: ${POSTGRES_USER}
+            #DB_PASSWORD: ${POSTGRES_PASSWORD}
+            #DB_DRIVER: 'pgsql'
         volumes:
-            # - ./src:/app
+            - ./:/app
             - app_volume_data:/app_volume
             - ./app_bind_data:/app_bind
+
+    #
+    # Uncomment one per time db service
+    #
 
     db:
         image: mariadb
@@ -25,6 +36,16 @@ services:
         volumes:
             - db_data:/var/lib/mysql
             - ./initdb.d:/docker-entrypoint-initdb.d
+
+    # db:
+    #     image: mongo
+    #     environment:
+    #         MONGO_INITDB_DATABASE: ${MONGO_DATABASE}
+    #         MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
+    #         MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+    #     volumes:
+    #         - db_data:/data/db
+    #         - ./initdb.d:/docker-entrypoint-initdb.d
 
     # db:
     #     image: mysql

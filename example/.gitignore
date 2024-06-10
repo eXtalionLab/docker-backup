@@ -3,6 +3,7 @@
 /backups
 /docker_volumes
 /initdb.d
+/var
+/vendor
 
 .docker-backup
-*.log
