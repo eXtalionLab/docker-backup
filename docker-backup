@@ -252,7 +252,7 @@ function dumpCustomDb {
     #
     # or
     #
-    # docker-compose exec docker_service \
+    # docker compose exec docker_service \
     #     your_command_to_dump --output ${dockerDbDumpFile} >> "${backupLogFile}" 2>&1
 
     warning 'Skip. Not implemented'
@@ -269,7 +269,7 @@ function dumpMariaDb {
     dbPassword="$(getEnv 'MYSQL_PASSWORD')"
     dbUser="$(getEnv 'MYSQL_USER')"
 
-    docker-compose exec -T "${dockerDbServiceName}" mariadb-dump \
+    docker compose exec -T "${dockerDbServiceName}" mariadb-dump \
         --hex-blob \
         --single-transaction \
         --max-allowed-packet "${mysqlMaxAllowedPacket}" \
@@ -291,7 +291,7 @@ function dumpMongoDb {
     dbPassword="$(getEnv 'MONGO_PASSWORD')"
     dbUser="$(getEnv 'MONGO_USER')"
 
-    docker-compose exec -T "${dockerDbServiceName}" mongodump \
+    docker compose exec -T "${dockerDbServiceName}" mongodump \
         -d "${dbName}" \
         -u "${dbUser}" \
         -p "${dbPassword}" \
@@ -311,7 +311,7 @@ function dumpMysqlDb {
     dbPassword="$(getEnv 'MYSQL_PASSWORD')"
     dbUser="$(getEnv 'MYSQL_USER')"
 
-    docker-compose exec -T "${dockerDbServiceName}" mysqldump \
+    docker compose exec -T "${dockerDbServiceName}" mysqldump \
         --hex-blob \
         --single-transaction \
         --max-allowed-packet "${mysqlMaxAllowedPacket}" \
@@ -331,7 +331,7 @@ function dumpPostgresDb {
     dbName="$(getEnv 'POSTGRES_DB')"
     dbUser="$(getEnv 'POSTGRES_USER')"
 
-    docker-compose exec -T "${dockerDbServiceName}" pg_dump \
+    docker compose exec -T "${dockerDbServiceName}" pg_dump \
         -b \
         -f "${dockerDbDumpFile}" \
         -U "${dbUser}" \
@@ -453,7 +453,7 @@ function restoreMongoDb {
     dbPassword="$(getEnv 'MONGO_PASSWORD')"
     dbUser="$(getEnv 'MONGO_USER')"
 
-    docker-compose exec -T "${dockerDbServiceName}" mongorestore \
+    docker compose exec -T "${dockerDbServiceName}" mongorestore \
         -u "${dbUser}" \
         -p "${dbPassword}" \
         --authenticationDatabase=admin \
