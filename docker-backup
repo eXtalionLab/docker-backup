@@ -4,7 +4,7 @@ set -e
 # See https://github.com/eXtalionLab/docker-backup
 
 script="${0}"
-script_path="$(dirname "$(realpath "${script}")")/.."
+script_path="$(dirname "$(realpath "${script}")")"
 root_path="$(pwd)"
 
 ###> config ###
@@ -361,6 +361,12 @@ function dumpVolumes {
         -v "$(realpath "${dockerVolumesDir}")":/local_dir \
         "${dockerImgToBackupVolumes}" \
         cp -aR /volumes/. /local_dir/. >> "${backupLogFile}" 2>&1 \
+    || warning "Fail. See \"${backupLogFile}\""
+
+    docker run --rm \
+        -v "$(realpath "${dockerVolumesDir}")":/local_dir \
+        "${dockerImgToBackupVolumes}" \
+        find /local_dir -type d -exec chmod +rx {} \; >> "${backupLogFile}" 2>&1 \
     || warning "Fail. See \"${backupLogFile}\""
 
     filesToBackup+=("${dockerVolumesDir}")

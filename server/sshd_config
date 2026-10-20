@@ -1,0 +1,22 @@
+Port 22
+HostKey /etc/ssh/keys/ssh_host_ed25519_key
+HostKey /etc/ssh/keys/ssh_host_rsa_key
+
+AllowUsers borg
+AuthorizedKeysFile none
+# Read live from the mounted file: no restart needed, no StrictModes issues
+AuthorizedKeysCommand /bin/cat /config/authorized_keys
+AuthorizedKeysCommandUser nobody
+AuthenticationMethods publickey
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin no
+
+AllowAgentForwarding no
+AllowTcpForwarding no
+PermitTTY no
+X11Forwarding no
+
+ClientAliveInterval 60
+ClientAliveCountMax 5
+LogLevel VERBOSE

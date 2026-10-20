@@ -1,0 +1,468 @@
+#!/bin/bash
+set -eo pipefail
+
+# Containerized docker-backup. Runs inside the "backup" service defined in
+# a project's compose.backup.yml.
+#
+# See https://github.com/eXtalionLab/docker-backup
+
+###> config ###
+backupRoot="${BACKUP_ROOT:-/backup}"
+# Space separated paths relative to ${backupRoot}. Empty = everything mounted
+# in ${backupRoot}.
+backupPaths="${BACKUP_PATHS:-}"
+# New line separated borg exclude patterns (relative to ${backupRoot}).
+backupExclude="${BACKUP_EXCLUDE:-}"
+backupSchedule="${BACKUP_SCHEDULE:-0 1 * * *}"
+backupCompression="${BACKUP_COMPRESSION:-zstd,5}"
+backupList="${BACKUP_LIST:-0}"
+backupPrune="${BACKUP_PRUNE:---keep-daily 7 --keep-weekly 4 --keep-monthly 6}"
+backupCompact="${BACKUP_COMPACT:-1}"
+# Allow types: custom, mariadb, mongo, mysql, postgresql (empty = no dump)
+dbType="${DB_TYPE:-}"
+dbService="${DB_SERVICE:-db}"
+dbDumpName="${DB_DUMP_NAME:-}"
+dbDumpCommand="${DB_DUMP_COMMAND:-}"
+dbRestoreCommand="${DB_RESTORE_COMMAND:-}"
+composeProject="${COMPOSE_PROJECT_NAME:-}"
+cronitorKey="${CRONITOR_KEY:-}"
+cronitorMonitor="${CRONITOR_MONITOR:-docker-backup}"
+secretsDir="${SECRETS_DIR:-/run/secrets}"
+###< config ###
+
+###> Change it if you known what you're doing ###
+export BORG_BASE_DIR="${BORG_BASE_DIR:-/borg}"
+commandToRun="${1:-}"
+logIndent=''
+mysqlMaxAllowedPacket='1G'
+###< Change it if you known what you're doing ###
+
+function help {
+    echo "Run: docker-backup [command]"
+    echo ""
+    echo "Commands:"
+    echo "    cron                 Run backups on \${BACKUP_SCHEDULE} (default)"
+    echo "    run                  Backup db and files now"
+    echo "    init                 Init borg repository \${BORG_REPO}"
+    echo "    restore_db [archive] Restore db dump from archive (default: last)"
+    echo "    borg ...             Run any borg command, eg. \"borg list\""
+    echo "    help                 Show this help"
+}
+
+function increaseLogIndent {
+    logIndent="${logIndent}  "
+}
+
+function decreaseLogIndent {
+    logIndent="${logIndent%'  '}"
+}
+
+function log {
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ${1} - ${2}"
+}
+
+function error {
+    log 'ERROR' "${1}" >&2
+    cronitorCall 'fail' "${1}"
+    exit 1
+}
+
+function info {
+    log 'INFO' "${logIndent}${1}"
+}
+
+function warning {
+    log 'WARNING' "${1}" >&2
+}
+
+function cronitorCall {
+    local state="${1}"
+    local message="${2:-}"
+
+    if [[ "${cronitorKey}" == '' ]] || [[ "${commandToRun}" != 'run' ]]; then
+        return
+    fi
+
+    curl -fsS -m 10 -G \
+        "https://cronitor.link/p/${cronitorKey}/${cronitorMonitor}" \
+        --data-urlencode "state=${state}" \
+        --data-urlencode "series=${backupName}" \
+        --data-urlencode "message=$(getComposeProject) ${message}" \
+        > /dev/null 2>&1 \
+    || warning 'Cronitor call fail'
+}
+
+function setupBorgEnv {
+    if [[ -z "${BORG_REPO:-}" ]]; then
+        error 'BORG_REPO is required'
+    fi
+
+    if [[ -z "${BORG_PASSPHRASE:-}" ]] \
+        && [[ -z "${BORG_PASSCOMMAND:-}" ]] \
+        && [[ -f "${secretsDir}/borg_passphrase" ]]
+    then
+        export BORG_PASSCOMMAND="cat ${secretsDir}/borg_passphrase"
+    fi
+
+    mkdir -p "${BORG_BASE_DIR}/.ssh"
+
+    if [[ -z "${BORG_RSH:-}" ]] && [[ -f "${secretsDir}/borg_ssh_key" ]]; then
+        # ssh refuses keys with too open permissions, so use a private copy
+        local sshKey='/tmp/borg_ssh_key'
+
+        install -m 600 "${secretsDir}/borg_ssh_key" "${sshKey}"
+
+        export BORG_RSH="ssh -i ${sshKey} \
+-o StrictHostKeyChecking=accept-new \
+-o UserKnownHostsFile=${BORG_BASE_DIR}/.ssh/known_hosts \
+-o ServerAliveInterval=60"
+    fi
+}
+
+function getComposeProject {
+    if [[ -z "${composeProject}" ]]; then
+        composeProject="$(docker inspect \
+            --format '{{ index .Config.Labels "com.docker.compose.project" }}' \
+            "$(hostname)" 2> /dev/null || true)"
+    fi
+
+    echo "${composeProject}"
+}
+
+function getDbContainer {
+    local project
+    local container
+
+    project="$(getComposeProject)"
+
+    if [[ -z "${project}" ]]; then
+        error 'Can not detect compose project. Set COMPOSE_PROJECT_NAME'
+    fi
+
+    container="$(docker ps -q \
+        --filter "label=com.docker.compose.project=${project}" \
+        --filter "label=com.docker.compose.service=${dbService}" \
+        | head -n 1)"
+
+    if [[ -z "${container}" ]]; then
+        error "Running \"${dbService}\" service not found in \"${project}\" project"
+    fi
+
+    echo "${container}"
+}
+
+# Commands are executed by "sh" inside the db container, so credentials are
+# read from the db container environment (single quotes are intended).
+# shellcheck disable=SC2016
+function getDbDumpCommand {
+    if [[ -n "${dbDumpCommand}" ]]; then
+        echo "${dbDumpCommand}"
+
+        return
+    fi
+
+    case "${dbType}" in
+        mariadb|mysql)
+            echo 'dump="$(command -v mariadb-dump || command -v mysqldump)" \
+&& MYSQL_PWD="${MARIADB_PASSWORD:-${MYSQL_PASSWORD}}" exec "${dump}" \
+--hex-blob --single-transaction --max-allowed-packet='"${mysqlMaxAllowedPacket}"' \
+-u "${MARIADB_USER:-${MYSQL_USER}}" "${MARIADB_DATABASE:-${MYSQL_DATABASE}}"'
+            ;;
+        postgresql)
+            echo 'exec pg_dump -b -U "${POSTGRES_USER:-postgres}" \
+"${POSTGRES_DB:-${POSTGRES_USER:-postgres}}"'
+            ;;
+        mongo)
+            echo 'exec mongodump --archive --quiet \
+-u "${MONGO_INITDB_ROOT_USERNAME}" -p "${MONGO_INITDB_ROOT_PASSWORD}" \
+--authenticationDatabase=admin \
+${MONGO_INITDB_DATABASE:+-d "${MONGO_INITDB_DATABASE}"}'
+            ;;
+        custom)
+            error 'DB_DUMP_COMMAND is required for "custom" db type'
+            ;;
+        *)
+            error "Unknown db type \"${dbType}\""
+            ;;
+    esac
+}
+
+# shellcheck disable=SC2016
+function getDbRestoreCommand {
+    if [[ -n "${dbRestoreCommand}" ]]; then
+        echo "${dbRestoreCommand}"
+
+        return
+    fi
+
+    case "${dbType}" in
+        mariadb|mysql)
+            echo 'client="$(command -v mariadb || command -v mysql)" \
+&& MYSQL_PWD="${MARIADB_PASSWORD:-${MYSQL_PASSWORD}}" exec "${client}" \
+--max-allowed-packet='"${mysqlMaxAllowedPacket}"' \
+-u "${MARIADB_USER:-${MYSQL_USER}}" "${MARIADB_DATABASE:-${MYSQL_DATABASE}}"'
+            ;;
+        postgresql)
+            echo 'exec psql -q -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-postgres}" \
+"${POSTGRES_DB:-${POSTGRES_USER:-postgres}}"'
+            ;;
+        mongo)
+            echo 'exec mongorestore --archive \
+-u "${MONGO_INITDB_ROOT_USERNAME}" -p "${MONGO_INITDB_ROOT_PASSWORD}" \
+--authenticationDatabase=admin'
+            ;;
+        *)
+            error "Set DB_RESTORE_COMMAND for \"${dbType}\" db type"
+            ;;
+    esac
+}
+
+function getDbDumpName {
+    if [[ -n "${dbDumpName}" ]]; then
+        echo "${dbDumpName}"
+    elif [[ "${dbType}" == 'mongo' ]]; then
+        echo 'initdb.d/dump.archive'
+    else
+        echo 'initdb.d/dump.sql'
+    fi
+}
+
+function collectPaths {
+    local -n result="${1}"
+    local dumpTopDir="${2}"
+
+    if [[ -n "${backupPaths}" ]]; then
+        read -ra result <<< "${backupPaths}"
+
+        return
+    fi
+
+    shopt -s dotglob nullglob
+    result=(*)
+    shopt -u dotglob nullglob
+
+    # The dump directory is created by this script, don't backup it twice
+    local i
+    for i in "${!result[@]}"; do
+        if [[ "${result[${i}]}" == "${dumpTopDir}" ]]; then
+            unset 'result[i]'
+        fi
+    done
+}
+
+# Db dump is streamed to borg through a named pipe (no temporary file).
+function startDbDump {
+    local fifo="${1}"
+    local container
+    local command
+
+    container="$(getDbContainer)"
+    command="$(getDbDumpCommand)"
+
+    info "Dump ${dbType} db from \"${dbService}\" into \"${fifo}\""
+
+    if [[ -e "${fifo}" ]] && [[ ! -p "${fifo}" ]]; then
+        error "\"${backupRoot}/${fifo}\" exists. Don't mount it into backup container"
+    fi
+
+    mkdir -p "$(dirname "${fifo}")" \
+        || error "Can't create \"$(dirname "${fifo}")\" directory"
+    rm -f "${fifo}"
+    mkfifo -m 600 "${fifo}"
+
+    docker exec -i "${container}" sh -c "${command}" > "${fifo}" &
+    dumpPid="${!}"
+}
+
+function stopDbDump {
+    local fifo="${1}"
+    local dumpStatus=0
+
+    if [[ -z "${dumpPid}" ]]; then
+        return 0
+    fi
+
+    # If borg died before reading the pipe the writer is still blocked
+    if kill -0 "${dumpPid}" 2> /dev/null; then
+        timeout 5 cat "${fifo}" > /dev/null 2>&1 || true
+    fi
+
+    wait "${dumpPid}" || dumpStatus="${?}"
+    dumpPid=''
+
+    rm -f "${fifo}"
+    rmdir -p "$(dirname "${fifo}")" 2> /dev/null || true
+
+    return "${dumpStatus}"
+}
+
+function borgCreate {
+    local fifo=''
+    local paths=()
+    local options=()
+    local status=0
+
+    cd "${backupRoot}" || error "Can't enter \"${backupRoot}\""
+
+    if [[ -n "${dbType}" ]]; then
+        fifo="$(getDbDumpName)"
+    fi
+
+    collectPaths paths "${fifo%%/*}"
+
+    if [[ -n "${fifo}" ]]; then
+        startDbDump "${fifo}"
+        # Read the dump first, so it doesn't wait for files
+        paths=("${fifo}" "${paths[@]}")
+        options+=(--read-special)
+    fi
+
+    if [[ ${#paths[@]} -eq 0 ]]; then
+        warning "Skip. Nothing to backup in \"${backupRoot}\""
+
+        return
+    fi
+
+    while IFS= read -r pattern; do
+        if [[ -n "${pattern}" ]]; then
+            options+=("--exclude=${pattern}")
+        fi
+    done <<< "${backupExclude}"
+
+    if [[ "${backupList}" == '1' ]]; then
+        options+=(--list --filter AME)
+    fi
+
+    info "Create archive \"${backupName}\" from: ${paths[*]}"
+
+    borg create \
+        --stats \
+        --compression "${backupCompression}" \
+        --exclude-caches \
+        "${options[@]}" \
+        "::${backupName}" \
+        "${paths[@]}" \
+    || status="${?}"
+
+    if [[ -n "${fifo}" ]]; then
+        stopDbDump "${fifo}" || {
+            status=2
+            warning "Db dump fail. Archive \"${backupName}\" has incomplete dump"
+        }
+    fi
+
+    # Borg return code 1 is a warning (eg. file changed while reading)
+    if [[ "${status}" -ge 2 ]]; then
+        error "Backup fail (${status})"
+    elif [[ "${status}" -eq 1 ]]; then
+        warning 'Backup finished with warnings'
+    fi
+}
+
+function borgPrune {
+    local options=()
+
+    if [[ -z "${backupPrune}" ]]; then
+        return
+    fi
+
+    read -ra options <<< "${backupPrune}"
+
+    info 'Prune borg repository'
+
+    borg prune --stats "${options[@]}" \
+    || warning 'Prune fail'
+
+    if [[ "${backupCompact}" == '1' ]]; then
+        info 'Compact borg repository'
+
+        borg compact \
+        || warning 'Compact fail'
+    fi
+}
+
+function run {
+    backupName="$(date +%Y%m%d_%H%M%S)"
+    dumpPid=''
+
+    info "Start backup of \"$(getComposeProject)\" into \"${BORG_REPO}\""
+    cronitorCall 'run'
+
+    increaseLogIndent
+    borgCreate
+    borgPrune
+    decreaseLogIndent
+
+    info 'End backup'
+    cronitorCall 'complete'
+}
+
+function init {
+    info "Init borg repo \"${BORG_REPO}\""
+
+    borg init \
+        -e repokey-blake2 \
+        --make-parent-dirs
+}
+
+function restoreDb {
+    local archive="${1:-}"
+    local container
+    local command
+
+    if [[ -z "${dbType}" ]]; then
+        error 'DB_TYPE is required'
+    fi
+
+    if [[ -z "${archive}" ]]; then
+        archive="$(borg list --last 1 --short)"
+    fi
+
+    container="$(getDbContainer)"
+    command="$(getDbRestoreCommand)"
+
+    info "Restore \"$(getDbDumpName)\" from \"${archive}\" into \"${dbService}\""
+
+    borg extract --stdout "::${archive}" "$(getDbDumpName)" \
+        | docker exec -i "${container}" sh -c "${command}"
+}
+
+function cron {
+    local crontab='/tmp/crontab'
+
+    echo "${backupSchedule} nice -n 19 docker-backup run" > "${crontab}"
+
+    info "Schedule backup at \"${backupSchedule}\" (TZ=${TZ:-UTC})"
+
+    exec "$(command -v supercronic)" -passthrough-logs "${crontab}"
+}
+
+case "${commandToRun}" in
+    cron)
+        setupBorgEnv
+        cron
+        ;;
+    run)
+        setupBorgEnv
+        run
+        ;;
+    init)
+        setupBorgEnv
+        init
+        ;;
+    restore_db)
+        setupBorgEnv
+        restoreDb "${2:-}"
+        ;;
+    borg)
+        setupBorgEnv
+        shift
+        exec borg "$@"
+        ;;
+    ''|help|-h|--help)
+        help
+        ;;
+    *)
+        exec "$@"
+        ;;
+esac

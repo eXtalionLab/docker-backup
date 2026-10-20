@@ -1,0 +1,19 @@
+# Borg server. Run on the machine which stores the backups:
+#   cp authorized_keys.dist authorized_keys && docker compose up -d
+services:
+    borg:
+        build: .
+        restart: unless-stopped
+        environment:
+            # uid/gid of the owner of repositories directory on the host
+            BORG_UID: ${BORG_UID:-1000}
+            BORG_GID: ${BORG_GID:-1000}
+        ports:
+            - ${BORG_PORT:-2222}:22
+        volumes:
+            - ${BORG_REPOS_DIR:-./repos}:/repos
+            - ./authorized_keys:/config/authorized_keys:ro
+            - ssh_keys:/etc/ssh/keys
+
+volumes:
+    ssh_keys:

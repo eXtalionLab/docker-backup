@@ -1,0 +1,4 @@
+# One line per project (client). Each key can access only its own repository.
+# "restrict" disables pty, forwarding etc. Path is the path inside container.
+#
+# command="borg serve --restrict-to-repository /repos/example.com",restrict ssh-ed25519 AAAA... backup@example.com

@@ -6,6 +6,13 @@ command to create a files backup and do it.
 
 ---
 
+- [Docker image (recommended)](#docker-image-recommended)
+	- [Backup service](#backup-service)
+	- [Configuration](#configuration)
+	- [Commands and restore](#commands-and-restore)
+	- [Borg server](#borg-server)
+	- [Migrate from the host script](#migrate-from-the-host-script)
+- [Host script (legacy)](#host-script-legacy)
 - [Install](#install)
 	- [Requirements](#requirements)
 - [Backup](#backup)
@@ -14,7 +21,152 @@ command to create a files backup and do it.
 	- [Restore](#restore)
 - [Example](#example)
 
-## Install
+## Docker image (recommended)
+
+The backup runs inside a `backup` service of your compose project. Files and
+volumes are mounted into the container (read only) and read by borg directly,
+so nothing is copied to the host before the backup. Database dump is streamed
+to borg through a named pipe, so it doesn't take disk space either.
+
+### Backup service
+
+Create **compose.backup.yml** next to your **compose.yml** (see
+[example/compose.backup.yml](example/compose.backup.yml)):
+
+```yaml
+services:
+    backup:
+        build: https://github.com/eXtalionLab/docker-backup.git
+        restart: unless-stopped
+        security_opt:
+            - label:disable # SELinux hosts only
+        environment:
+            TZ: Europe/Warsaw
+            BACKUP_SCHEDULE: '0 1 * * *'
+            BORG_REPO: ssh://borg@backup.example.com:2222/repos/example.com
+            DB_TYPE: mariadb
+            DB_SERVICE: db
+        secrets:
+            - borg_passphrase
+            - borg_ssh_key
+        volumes:
+            - /var/run/docker.sock:/var/run/docker.sock:ro
+            - backup_borg:/borg
+            - ./.env:/backup/.env:ro
+            - ./wp-content:/backup/wp-content:ro
+            - uploads:/backup/docker_volumes/example_uploads:ro
+
+secrets:
+    borg_passphrase:
+        file: ./.borg/passphrase
+    borg_ssh_key:
+        file: ./.borg/ssh_key
+
+volumes:
+    backup_borg:
+```
+
+and start it with the stack:
+
+```bash
+docker compose -f compose.yml -f compose.backup.yml up -d
+# or put COMPOSE_FILE=compose.yml:compose.backup.yml into .env
+```
+
+Everything mounted into `/backup` is archived with its path relative to
+`/backup`, eg. `/backup/wp-content` → `wp-content`. Database dump is stored as
+`initdb.d/dump.sql` (`initdb.d/dump.archive` for mongo). Don't mount your
+`initdb.d` directory into the backup container.
+
+Keep the `/borg` volume. It holds borg cache (without it every run has to
+rebuild the cache from the remote repository), borg security data and ssh
+`known_hosts`.
+
+### Configuration
+
+| Env | Default | Description |
+|--|--|--|
+| `BORG_REPO` | | Required. Local path or `ssh://` url. |
+| `BORG_PASSPHRASE` | | Repository passphrase. Prefer `borg_passphrase` secret. |
+| `BACKUP_SCHEDULE` | `0 1 * * *` | Cron expression. Spread projects in time when they share one borg server. |
+| `TZ` | `UTC` | Timezone used by the schedule. |
+| `BACKUP_PATHS` | everything in `/backup` | Space separated paths (relative to `/backup`) to backup. |
+| `BACKUP_EXCLUDE` | | New line separated borg exclude patterns, eg. `data/*.log`. |
+| `BACKUP_COMPRESSION` | `zstd,5` | Borg compression. |
+| `BACKUP_LIST` | `0` | `1` prints every added/modified file. |
+| `BACKUP_PRUNE` | `--keep-daily 7 --keep-weekly 4 --keep-monthly 6` | Borg prune options. Empty disables prune. |
+| `BACKUP_COMPACT` | `1` | Run `borg compact` after prune (frees disk space on the server). |
+| `DB_TYPE` | | `mariadb`, `mysql`, `postgresql`, `mongo`, `custom`. Empty = no dump. |
+| `DB_SERVICE` | `db` | Compose service with the database. |
+| `DB_DUMP_NAME` | `initdb.d/dump.sql` | Dump path inside the archive. |
+| `DB_DUMP_COMMAND` | | Custom dump command, executed by `sh -c` inside db container, writes to stdout. |
+| `DB_RESTORE_COMMAND` | | Custom restore command, executed by `sh -c` inside db container, reads stdin. |
+| `COMPOSE_PROJECT_NAME` | auto | Compose project, detected from the backup container labels. |
+| `CRONITOR_KEY` | | [Cronitor](https://cronitor.io) telemetry key. |
+| `CRONITOR_MONITOR` | `docker-backup` | Cronitor monitor key. |
+
+Secrets (files in `/run/secrets`):
+
+- `borg_passphrase` - used when `BORG_PASSPHRASE`/`BORG_PASSCOMMAND` is not set,
+- `borg_ssh_key` - private ssh key used when `BORG_RSH` is not set.
+
+Database credentials are read from the db container environment
+(`MARIADB_*`/`MYSQL_*`, `POSTGRES_*`, `MONGO_INITDB_ROOT_*`), so they don't have
+to be passed to the backup service.
+
+### Commands and restore
+
+```bash
+alias backup='docker compose -f compose.yml -f compose.backup.yml exec backup'
+
+backup docker-backup init           # init a new repository (repokey-blake2)
+backup docker-backup run            # backup now
+backup docker-backup borg list      # any borg command
+backup docker-backup restore_db     # restore db dump from the last archive
+backup docker-backup restore_db 20250101_010000
+```
+
+Restore files with `borg extract` into a writable directory and move them where
+they belong (stop the stack first):
+
+```bash
+docker compose -f compose.yml -f compose.backup.yml run --rm \
+    -v ./restore:/restore -w /restore backup \
+    borg extract ::20250101_010000
+```
+
+### Borg server
+
+[server/](server/) contains an image with `sshd` + `borg serve` in the same
+version as the client. Each client key gets access only to its own repository:
+
+```bash
+cd server/
+cp authorized_keys.dist authorized_keys
+# command="borg serve --restrict-to-repository /repos/example.com",restrict ssh-ed25519 AAAA... example.com
+BORG_REPOS_DIR=/media/disk/borg BORG_UID=1001 BORG_GID=1001 docker compose up -d
+```
+
+`authorized_keys` is read on every login, no restart needed after a change.
+
+### Migrate from the host script
+
+Old archives keep working (borg 1.4 reads borg 1.2 repositories) and data is
+deduplicated against them, as long as paths in `/backup` match the paths from
+`.docker-backup` (`filesToBackup` → `/backup/<path>`, volumes →
+`/backup/docker_volumes/<volume>`).
+
+1. Check archives authentication with the new client:
+   `docker-backup borg upgrade --check-tam` and
+   `docker-backup borg list --format '{name} {tam}{NL}'` (all `verified`).
+2. If the repository url changes (eg. new server port/path) and you reuse an
+   old borg cache, run the first backup with
+   `BORG_RELOCATED_REPO_ACCESS_IS_OK=yes`.
+3. Remove the project from the host cron.
+
+## Host script (legacy)
+
+### Install
 
 Just clone this repository
 
@@ -28,7 +180,7 @@ and create a link to the script **docker-backup**
 sudo ln -sr docker-backup/docker-backup /usr/local/bin/docker-backup
 ```
 
-### Requirements
+#### Requirements
 
 **BorgBackup** has to be
 [installed](https://borgbackup.readthedocs.io/en/stable/installation.html) on

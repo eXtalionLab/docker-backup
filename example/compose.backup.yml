@@ -1,0 +1,50 @@
+# Backup service. Start it together with the stack:
+#   docker compose -f compose.yml -f compose.backup.yml up -d
+# or add "COMPOSE_FILE=compose.yml:compose.backup.yml" to .env.
+#
+# Everything mounted into /backup is backed up with the same (relative) path,
+# so "/backup/app_bind_data" lands in the archive as "app_bind_data".
+services:
+    backup:
+        build: ..
+        # Or use prebuilt image:
+        # image: ghcr.io/extalionlab/docker-backup:1
+        restart: unless-stopped
+        # Allow access to docker.sock and bind mounts on SELinux hosts
+        security_opt:
+            - label:disable
+        environment:
+            TZ: Europe/Warsaw
+            BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-0 1 * * *}
+            # Remote example: ssh://borg@backup.example.com:2222/repos/example
+            BORG_REPO: ${BORG_REPO:-/repo}
+            BACKUP_EXCLUDE: |
+                docker_volumes/example_app_volume_data/*.log
+            # Dump "db" service. Credentials are read from db container envs.
+            DB_TYPE: mariadb
+            DB_SERVICE: db
+            CRONITOR_KEY: ${CRONITOR_KEY:-}
+        secrets:
+            - borg_passphrase
+            # - borg_ssh_key
+        volumes:
+            # Required to dump db (docker exec)
+            - /var/run/docker.sock:/var/run/docker.sock:ro
+            # Borg cache, security dir and ssh known_hosts
+            - backup_borg:/borg
+            # Files to backup (read only)
+            - ./.env:/backup/.env:ro
+            - ./app_bind_data:/backup/app_bind_data:ro
+            - app_volume_data:/backup/docker_volumes/example_app_volume_data:ro
+            # Local repository, only for this demo
+            - backup_repo:/repo
+
+secrets:
+    borg_passphrase:
+        file: ./.borg/passphrase
+    # borg_ssh_key:
+    #     file: ./.borg/ssh_key
+
+volumes:
+    backup_borg:
+    backup_repo:
